@@ -1,0 +1,64 @@
+name: CI-CD
+on: 
+  push:
+    branches: ["main", "desenvolvimento"]
+  workflow_dispatch:
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+      actions: read
+      
+    steps:
+      - name: Obtendo o código fonte
+        uses: actions/checkout@v4.1.2
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4.0.2
+        with:
+          node-version: 18.x
+
+      - name: Instalação de dependencias
+        run: npm install
+        working-directory: ./src
+
+      - name: Execução de Teste Unitário
+        run: npm test
+        working-directory: ./src
+        
+      - name: Docker Login
+        uses: docker/login-action@v3.1.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USR }}
+          password: ${{ secrets.DOCKERHUB_PWD }}
+        
+      - name: Docker build 
+        uses: docker/build-push-action@v5.3.0
+        with: 
+          context: ./src
+          file: ./src/Dockerfile
+          push: true
+          tags: |
+            fabricioveronez/conversao-temperatura:v${{ github.run_number }}
+            fabricioveronez/conversao-temperatura:latest
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.16.1
+        with:
+          image-ref: fabricioveronez/conversao-temperatura:v${{ github.run_number }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: 0
+          severity: UNKNOWN,CRITICAL,HIGH,MEDIUM,LOW
+      
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+    
